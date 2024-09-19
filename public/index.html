@@ -1,17 +1,31 @@
+<!-- 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Call and Chat App</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <title>Dosthi App - Sign In/Up</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .form-control {
-            width: 400px;
-        }
-        video {
-            width: 100%;
-            height: auto;
+        .profile-img {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
         }
         .chat-container {
             margin-top: 20px;
@@ -24,143 +38,468 @@
         }
     </style>
 </head>
-<body class="container justify-content-center align-content-center">
-    <h1 class="m-4">Dosthi Video Call and Chat App</h1>
-    <input type="text" id="roomId" class="m-4 form-control" placeholder="Enter Room ID" />
-    <button id="joinButton" class="m-4 btn btn-primary">Join Call</button>
-    <button id="endCallButton" class="m-4 btn btn-danger" disabled>End Call</button>
-    <div class="video-container">
-        <video id="localVideo" autoplay muted></video>
-        <video id="remoteVideo" autoplay></video>
+<body class="container">
+
+    <h1 class="m-4">Dosthi App</h1>
+
+    <div id="authSection">
+        <h2>Sign Up</h2>
+        <input type="text" id="signupName" placeholder="Name" class="form-control mb-2" />
+        <input type="password" id="signupPassword" placeholder="Password" class="form-control mb-2" />
+        <input type="file" id="profilePicture" class="form-control mb-2" />
+        <button id="signupButton" class="btn btn-primary">Sign Up</button>
+
+        <h2 class="mt-4">Sign In</h2>
+        <input type="text" id="signinName" placeholder="Name" class="form-control mb-2" />
+        <input type="password" id="signinPassword" placeholder="Password" class="form-control mb-2" />
+        <button id="signinButton" class="btn btn-secondary">Sign In</button>
     </div>
 
-    <div class="chat-container">
+    <div id="profileSection" class="d-none">
+        <h2>Welcome, <span id="currentUserName"></span></h2>
+        <h4>Other Users</h4>
+        <div id="otherUsers"></div>
+        <button id="logoutButton" class="btn btn-danger mt-2">Logout</button>
+    </div>
+
+    <div class="chat-container d-none">
         <div id="chatMessages" class="chat-messages"></div>
-        <input type="text" id="chatInput" class="form-control" placeholder="Type a message..." />
+        <input type="text" id="chatInput" class="form-control mb-2" placeholder="Type a message..." />
         <button id="sendChatButton" class="btn btn-secondary">Send</button>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io({
-            transports: ['websocket', 'polling']
-        });
-
-        const servers = {
-            iceServers: [
-                {
-                    urls: 'stun:stun.l.google.com:19302'
-                }
-            ]
-        };
-
-        let localStream;
-        let remoteStream;
-        let peerConnection;
+        const socket = io('http://localhost:3000');
+        let currentUser;
         let roomId;
 
-        const joinButton = document.getElementById('joinButton');
-        const endCallButton = document.getElementById('endCallButton');
-        const localVideo = document.getElementById('localVideo');
-        const remoteVideo = document.getElementById('remoteVideo');
-        const chatInput = document.getElementById('chatInput');
-        const sendChatButton = document.getElementById('sendChatButton');
-        const chatMessages = document.getElementById('chatMessages');
+        document.getElementById('signupButton').addEventListener('click', signUp);
+        document.getElementById('signinButton').addEventListener('click', signIn);
+        document.getElementById('logoutButton').addEventListener('click', logout);
+        document.getElementById('sendChatButton').addEventListener('click', sendMessage);
 
-        joinButton.addEventListener('click', joinCall);
-        endCallButton.addEventListener('click', endCall);
-        sendChatButton.addEventListener('click', sendMessage);
-        chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendMessage();
-            }
-        });
+        async function signUp() {
+            const name = document.getElementById('signupName').value;
+            const password = document.getElementById('signupPassword').value;
+            const profilePicture = document.getElementById('profilePicture').files[0];
 
-        async function joinCall() {
-            roomId = document.getElementById('roomId').value;
-            if (!roomId) {
-                alert('Please enter a room ID');
+            if (!name || !password || !profilePicture) {
+                alert('Please fill all fields.');
                 return;
             }
 
-            socket.emit('join', roomId);
+            const reader = new FileReader();
+            reader.onloadend = async function () {
+                const profileData = reader.result;
 
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            localVideo.srcObject = localStream;
+                try {
+                    const response = await fetch('http://localhost:3000/signup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, password, profilePicture: profileData })
+                    });
 
-            peerConnection = new RTCPeerConnection(servers);
-            peerConnection.onicecandidate = event => {
-                if (event.candidate) {
-                    socket.emit('ice-candidate', roomId, event.candidate);
+                    if (response.ok) {
+                        alert('Sign-up successful!');
+                    } else {
+                        const result = await response.json();
+                        alert(result.error || 'Sign-up failed!');
+                    }
+                } catch (error) {
+                    console.error('Error during sign-up:', error);
+                    alert('Sign-up failed due to a network error.');
                 }
             };
-            peerConnection.ontrack = event => {
-                if (!remoteStream) {
-                    remoteStream = new MediaStream();
-                    remoteVideo.srcObject = remoteStream;
-                }
-                remoteStream.addTrack(event.track);
-            };
-
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
-            });
-
-            socket.on('offer', async offer => {
-                await peerConnection.setRemoteDescription(offer);
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                socket.emit('answer', roomId, answer);
-            });
-
-            socket.on('answer', async answer => {
-                await peerConnection.setRemoteDescription(answer);
-            });
-
-            socket.on('ice-candidate', async candidate => {
-                await peerConnection.addIceCandidate(candidate);
-            });
-
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.emit('offer', roomId, offer);
-
-            joinButton.disabled = true;
-            endCallButton.disabled = false;
+            reader.readAsDataURL(profilePicture);
         }
 
-        function endCall() {
-            peerConnection.close();
-            localStream.getTracks().forEach(track => track.stop());
-            if (remoteStream) {
-                remoteStream.getTracks().forEach(track => track.stop());
-            }
-            localVideo.srcObject = null;
-            remoteVideo.srcObject = null;
+        async function signIn() {
+            const name = document.getElementById('signinName').value;
+            const password = document.getElementById('signinPassword').value;
 
-            socket.disconnect();
-            joinButton.disabled = false;
-            endCallButton.disabled = true;
+            if (!name || !password) {
+                alert('Please fill all fields.');
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:3000/signin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, password })
+                });
+
+                if (response.ok) {
+                    currentUser = await response.json();
+                    document.getElementById('currentUserName').textContent = currentUser.name;
+                    document.getElementById('authSection').classList.add('d-none');
+                    document.getElementById('profileSection').classList.remove('d-none');
+                    loadUsers();
+                } else {
+                    const result = await response.json();
+                    alert(result.error || 'Sign-in failed!');
+                }
+            } catch (error) {
+                console.error('Error during sign-in:', error);
+                alert('Sign-in failed due to a network error.');
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const response = await fetch(`http://localhost:3000/users/${currentUser.name}`);
+                const users = await response.json();
+
+                const usersContainer = document.getElementById('otherUsers');
+                usersContainer.innerHTML = '';
+
+                users.forEach(user => {
+                    const userDiv = document.createElement('div');
+                    userDiv.classList.add('user', 'mb-2');
+
+                    const img = document.createElement('img');
+                    img.src = user.profilePicture;
+                    img.classList.add('profile-img', 'me-2');
+
+                    const nameSpan = document.createElement('span');
+                    nameSpan.textContent = user.name;
+
+                    userDiv.appendChild(img);
+                    userDiv.appendChild(nameSpan);
+
+                    userDiv.addEventListener('click', () => {
+                        startChatOrCall(user.name);
+                    });
+
+                    usersContainer.appendChild(userDiv);
+                });
+            } catch (error) {
+                console.error('Error loading users:', error);
+                alert('Failed to load users.');
+            }
+        }
+
+        function logout() {
+            document.getElementById('authSection').classList.remove('d-none');
+            document.getElementById('profileSection').classList.add('d-none');
+            currentUser = null;
+        }
+
+        function startChatOrCall(friendName) {
+            const sortedNames = [currentUser.name, friendName].sort();
+            roomId = sortedNames.join('-');
+            socket.emit('join', roomId);
+
+            document.querySelector('.chat-container').classList.remove('d-none');
         }
 
         function sendMessage() {
-            const message = chatInput.value;
-            if (message) {
-                socket.emit('chat-message', roomId, message);
-                addMessage(`You: ${message}`);
-                chatInput.value = '';
+            const message = document.getElementById('chatInput').value;
+            if (message.trim() === '') {
+                alert('Message cannot be empty.');
+                return;
+            }
+            socket.emit('chat-message', roomId, message);
+            document.getElementById('chatMessages').innerHTML += `<p>You: ${message}</p>`;
+            document.getElementById('chatInput').value = '';
+        }
+
+        socket.on('chat-message', (message) => {
+            document.getElementById('chatMessages').innerHTML += `<p>Friend: ${message}</p>`;
+        });
+    </script>
+</body>
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dosthi App - Sign In/Up</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .profile-img {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .chat-container {
+            margin-top: 20px;
+        }
+        .chat-messages {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 200px;
+            overflow-y: scroll;
+        }
+        #localVideo, #remoteVideo {
+            width: 100%;
+            height: 300px;
+            border: 1px solid #ccc;
+            background-color: #000;
+        }
+    </style>
+</head>
+<body class="container">
+
+    <h1 class="m-4">Dosthi App</h1>
+
+    <!-- Sign Up and Sign In Section -->
+    <div id="authSection">
+        <h2>Sign Up</h2>
+        <input type="text" id="signupName" placeholder="Name" class="form-control mb-2" />
+        <input type="password" id="signupPassword" placeholder="Password" class="form-control mb-2" />
+        <input type="file" id="profilePicture" class="form-control mb-2" />
+        <button id="signupButton" class="btn btn-primary">Sign Up</button>
+
+        <h2 class="mt-4">Sign In</h2>
+        <input type="text" id="signinName" placeholder="Name" class="form-control mb-2" />
+        <input type="password" id="signinPassword" placeholder="Password" class="form-control mb-2" />
+        <button id="signinButton" class="btn btn-secondary">Sign In</button>
+    </div>
+
+    <!-- Profile Section -->
+    <div id="profileSection" class="d-none">
+        <h2>Welcome, <span id="currentUserName"></span></h2>
+        <h4>Other Users</h4>
+        <div id="otherUsers"></div>
+        <button id="logoutButton" class="btn btn-danger mt-2">Logout</button>
+    </div>
+
+    <!-- Chat Section -->
+    <div class="chat-container d-none">
+        <div id="chatMessages" class="chat-messages"></div>
+        <input type="text" id="chatInput" class="form-control mb-2" placeholder="Type a message..." />
+        <button id="sendChatButton" class="btn btn-secondary">Send</button>
+        <button id="startCallButton" class="btn btn-success mt-2">Start Video Call</button>
+    </div>
+
+    <!-- Video Call Section -->
+    <div id="videoCallSection" class="d-none">
+        <video id="localVideo" autoplay muted></video>
+        <video id="remoteVideo" autoplay></video>
+        <button id="endCallButton" class="btn btn-danger mt-2">End Call</button>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io('http://localhost:3000');
+        let currentUser;
+        let roomId;
+        let localStream;
+        let peerConnection;
+        const config = { 
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] 
+        };
+
+        document.getElementById('signupButton').addEventListener('click', signUp);
+        document.getElementById('signinButton').addEventListener('click', signIn);
+        document.getElementById('logoutButton').addEventListener('click', logout);
+        document.getElementById('sendChatButton').addEventListener('click', sendMessage);
+        document.getElementById('startCallButton').addEventListener('click', startVideoCall);
+        document.getElementById('endCallButton').addEventListener('click', endVideoCall);
+
+        async function signUp() {
+            const name = document.getElementById('signupName').value;
+            const password = document.getElementById('signupPassword').value;
+            const profilePicture = document.getElementById('profilePicture').files[0];
+
+            if (!name || !password) {
+                alert('Name and password are required');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('password', password);
+            if (profilePicture) {
+                formData.append('profilePicture', profilePicture);
+            }
+
+            const response = await fetch('/signup', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (response.ok) {
+                alert('Sign up successful');
+                document.getElementById('authSection').classList.add('d-none');
+                document.getElementById('profileSection').classList.remove('d-none');
+                currentUser = { name };
+                document.getElementById('currentUserName').textContent = name;
+                loadUsers();
+            } else {
+                alert(result.error);
             }
         }
 
-        function addMessage(message) {
-            const messageElement = document.createElement('div');
-            messageElement.textContent = message;
-            chatMessages.appendChild(messageElement);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+        async function signIn() {
+            const name = document.getElementById('signinName').value;
+            const password = document.getElementById('signinPassword').value;
+
+            if (!name || !password) {
+                alert('Name and password are required');
+                return;
+            }
+
+            const response = await fetch('/signin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, password })
+            });
+
+            const result = await response.json();
+            if (response.ok) {
+                alert('Sign in successful');
+                document.getElementById('authSection').classList.add('d-none');
+                document.getElementById('profileSection').classList.remove('d-none');
+                currentUser = { name, profilePicture: result.profilePicture };
+                document.getElementById('currentUserName').textContent = name;
+                loadUsers();
+            } else {
+                alert(result.error);
+            }
         }
 
-        socket.on('chat-message', message => {
-            addMessage(`srinadh: ${message}`);
+        async function loadUsers() {
+            const response = await fetch(`/users/${currentUser.name}`);
+            const users = await response.json();
+            const otherUsersDiv = document.getElementById('otherUsers');
+            otherUsersDiv.innerHTML = '';
+
+            users.forEach(user => {
+                const userDiv = document.createElement('div');
+                userDiv.className = 'd-flex align-items-center mb-2';
+                userDiv.innerHTML = `
+                    <img src="${user.profilePicture}" class="profile-img me-2" />
+                    <span>${user.name}</span>
+                    <button class="btn btn-primary ms-2" onclick="startChatOrCall('${user.name}')">Chat/Call</button>
+                `;
+                otherUsersDiv.appendChild(userDiv);
+            });
+        }
+
+        function logout() {
+            document.getElementById('authSection').classList.remove('d-none');
+            document.getElementById('profileSection').classList.add('d-none');
+            document.querySelector('.chat-container').classList.add('d-none');
+            document.getElementById('videoCallSection').classList.add('d-none');
+            currentUser = null;
+        }
+
+        function startChatOrCall(friendName) {
+            const sortedNames = [currentUser.name, friendName].sort();
+            roomId = sortedNames.join('-');
+            socket.emit('join', roomId);
+
+            document.querySelector('.chat-container').classList.remove('d-none');
+            document.getElementById('videoCallSection').classList.add('d-none');
+        }
+
+        function sendMessage() {
+            const message = document.getElementById('chatInput').value;
+            if (message) {
+                socket.emit('chat-message', roomId, { user: currentUser.name, message });
+                document.getElementById('chatMessages').innerHTML += `<div><b>${currentUser.name}:</b> ${message}</div>`;
+                document.getElementById('chatInput').value = '';
+            }
+        }
+
+        function startVideoCall() {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then(stream => {
+                    localStream = stream;
+                    document.getElementById('localVideo').srcObject = stream;
+
+                    peerConnection = new RTCPeerConnection(config);
+
+                    localStream.getTracks().forEach(track => {
+                        peerConnection.addTrack(track, localStream);
+                    });
+
+                    peerConnection.onicecandidate = event => {
+                        if (event.candidate) {
+                            socket.emit('ice-candidate', roomId, event.candidate);
+                        }
+                    };
+
+                    peerConnection.ontrack = event => {
+                        document.getElementById('remoteVideo').srcObject = event.streams[0];
+                    };
+
+                    peerConnection.createOffer()
+                        .then(offer => {
+                            return peerConnection.setLocalDescription(offer);
+                        })
+                        .then(() => {
+                            socket.emit('offer', roomId, peerConnection.localDescription);
+                        });
+
+                    document.querySelector('.chat-container').classList.add('d-none');
+                    document.getElementById('videoCallSection').classList.remove('d-none');
+                })
+                .catch(error => {
+                    console.error('Error accessing media devices.', error);
+                });
+        }
+
+        function endVideoCall() {
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            document.getElementById('localVideo').srcObject = null;
+            document.getElementById('remoteVideo').srcObject = null;
+
+            document.querySelector('.chat-container').classList.remove('d-none');
+            document.getElementById('videoCallSection').classList.add('d-none');
+        }
+
+        socket.on('chat-message', (message) => {
+            document.getElementById('chatMessages').innerHTML += `<div><b>${message.user}:</b> ${message.message}</div>`;
+        });
+
+        socket.on('offer', async (offer) => {
+            if (!peerConnection) {
+                peerConnection = new RTCPeerConnection(config);
+
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate) {
+                        socket.emit('ice-candidate', roomId, event.candidate);
+                    }
+                };
+
+                peerConnection.ontrack = event => {
+                    document.getElementById('remoteVideo').srcObject = event.streams[0];
+                };
+
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                socket.emit('answer', roomId, peerConnection.localDescription);
+            }
+        });
+
+        socket.on('answer', async (answer) => {
+            if (peerConnection) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            }
+        });
+
+        socket.on('ice-candidate', async (candidate) => {
+            if (peerConnection) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            }
         });
     </script>
 </body>
