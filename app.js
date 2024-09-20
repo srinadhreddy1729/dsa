@@ -389,8 +389,7 @@ const io = socketIo(server, {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.use(cors());
+const PORT = 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -511,6 +510,11 @@ io.on('connection', (socket) => {
     console.log('A user disconnected:', socket.id);
   });
 });
+
+app.get("/data",(req,res)=>
+    {
+        res.json({message:"its working....."})
+})
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
