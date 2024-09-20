@@ -511,6 +511,10 @@ io.on('connection', (socket) => {
     console.log('A user disconnected:', socket.id);
   });
 });
+app.get("/get",(req,res)=>
+  {
+    res.json({message:"completed"});
+  }
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
