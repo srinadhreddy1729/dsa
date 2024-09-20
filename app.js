@@ -515,6 +515,7 @@ app.get("/get",(req,res)=>
   {
     res.json({message:"completed"});
   }
+        );
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
