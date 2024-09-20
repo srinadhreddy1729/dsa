@@ -510,6 +510,11 @@ io.on('connection', (socket) => {
     console.log('A user disconnected:', socket.id);
   });
 });
+app.get("/get",(req,res)=>
+  {
+    res.json({message:"completed"});
+  }
+        );
 
 app.get("/data",(req,res)=>
     {
